@@ -1,7 +1,7 @@
-#include "src/lib/src/System.h"
-#include "src/lib/src/MotorLn298.h"
-#include "src/lib/src/MotorVelocityControl.h"
-#include "src/lib/src/SonarHcsr04.h"
+#include <System.h>
+#include <MotorLn298.h>
+#include <MotorVelocityControl.h>
+#include <SonarHcsr04.h>
 
 #ifdef ARDUINO_ARCH_MEGAAVR
 #include "EveryTimerB.h"
