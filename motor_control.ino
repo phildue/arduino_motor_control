@@ -17,10 +17,9 @@ constexpr int in1 = 2, in2 = 3, enA = 9;
 constexpr int in3 = 4, in4 = 5, enB = 10;
 constexpr int encRight = 6, encLeft = 7;
 
-/// Control Parameters
-constexpr double kp = 0.02, ki = 0.05, kd = 0.00;
-volatile double kpR = kp, kiR = ki, kdR = kd;
-volatile double kpL = kp, kiL = ki, kdL = kd;
+/// Control Parameters Init
+constexpr double kpR = 0.02, kiR = 0.05, kdR = 0.00;
+constexpr double kpL = 0.02, kiL = 0.05, kdL = 0.00;
 
 constexpr double f = 1000;//[hz]
 constexpr double dT = 1.0 / f; //[s]
@@ -37,8 +36,8 @@ volatile Encoder* encoderLeft;
 volatile Encoder* encoderRight;
 volatile MotorLn298* motorLeft;
 volatile MotorLn298* motorRight;
-volatile VelocityEstimator* filterLeft;
-volatile VelocityEstimator* filterRight;
+volatile LuenbergerObserver* filterLeft;
+volatile LuenbergerObserver* filterRight;
 volatile MotorVelocityControl* controlLeft;
 volatile MotorVelocityControl* controlRight;
 volatile bool running = true;
@@ -78,7 +77,7 @@ void setup()
   //auto filterRight = std::make_shared<SlidingAverageFilter>(filterSize);
   filterRight = new LuenbergerObserver(kpObs, kiObs);
 
-  controlRight = new MotorVelocityControl(motorRight, encoderRight, filterRight, kp, ki, kd);
+  controlRight = new MotorVelocityControl(motorRight, encoderRight, filterRight, kpR, kiR, kdR);
 
   motorLeft = new MotorLn298(in4, in3, enB, gpios);
   encoderLeft = new Encoder(encLeft, gpios);
@@ -89,13 +88,13 @@ void setup()
   //auto filterLeft = std::make_shared<SlidingAverageFilter>(filterSize);
   filterLeft = new LuenbergerObserver(kpObs, kiObs);
 
-  controlLeft = new MotorVelocityControl(motorLeft, encoderLeft, filterLeft, kp, ki, kd);
+  controlLeft = new MotorVelocityControl(motorLeft, encoderLeft, filterLeft, kpL, kiL, kdL);
 
   Timer1.initialize();
   Timer1.attachInterrupt(isr_update);
   Timer1.setPeriod(dT * S_TO_US);
 
-
+  printHelp();
 }
 
 void readSerial();
@@ -103,22 +102,7 @@ void writeSerial();
 
 void updateState()
 {
-   if (setPointRight > V_MAX)
-   {
-    setPointRight = V_MAX;
-   }
-   if (setPointRight < -1.0 * V_MAX)
-   {
-    setPointRight = -1.0 * V_MAX;
-   }
-   if(setPointLeft > V_MAX)
-   {
-    setPointLeft = V_MAX;
-   }
-   if (setPointLeft < -1.0 * V_MAX)
-   {
-    setPointLeft = -1.0 * V_MAX;
-   }
+   
    controlRight->set(setPointRight);
    controlLeft->set(setPointLeft);
    if (setPointRight > 0 || setPointLeft > 0)
@@ -132,8 +116,8 @@ void updateState()
     setPointLeft = 0.0;
     setPointRight = 0.0;
     running = false;
-    motorLeft->stop();
-    motorRight->stop();
+    controlLeft->stop();
+    controlRight->stop();
     }
 
 }
@@ -155,8 +139,20 @@ void loop()
   tick += deltaTick;
 
 }
+void printHelp()
+{
+  Serial.println("Welcome to Arduino Motor Control");
 
-void handleSerial()
+  Serial.println(String("Control Right: kpR = " ) + String(controlRight->P()) + String(" kiR = ") + String(controlRight->I()) + String(" kdR = ") + String(controlRight->D()));
+  Serial.println(String("Control Left: kpL = " ) + String(controlLeft->P()) + String(" kiL = ") + String(controlLeft->I()) + String(" kdL = ") + String(controlLeft->D()));
+  Serial.println(String("Filter: kpO = " ) + String(filterLeft->P()) + String(" kiO = ") + String(filterLeft->I()));
+  Serial.println("Usage:");
+  Serial.println("Configure: \"<param> <value>\" e.g with \"kp X\" or \"kpl X\"");
+  Serial.println("Set point: \"<param> <value>\" e.g with \"vl X\" or \"vr X\"");
+
+  Serial.println("Output Stream: vl* vl vr* vr");
+}
+void readSerial()
 {
   if (Serial.available() > 0)
   {
@@ -180,73 +176,86 @@ void handleSerial()
     }
     else if (msg.startsWith("kpr"))
     {
-      kpR = msg.substring(4).toFloat();
+      controlRight->P() = msg.substring(4).toFloat();
       Serial.println("Setting kpR:");
-      Serial.println(kpR);
+      Serial.println(controlRight->P() );
 
     }
     else if (msg.startsWith("kir"))
     {
-      kiR = msg.substring(4).toFloat();
+      controlRight->I() = msg.substring(4).toFloat();
       Serial.println("Setting kiR:");
-      Serial.println(kiR);
+      Serial.println(controlRight->I());
 
     }
     else if (msg.startsWith("kdr"))
     {
-      kdR = msg.substring(4).toFloat();
+      controlRight->D() = msg.substring(4).toFloat();
       Serial.println("Setting kdR:");
-      Serial.println(kdR);
+      Serial.println(controlRight->D());
     }
     else if (msg.startsWith("kpl"))
     {
-      kpL = msg.substring(4).toFloat();
+      controlLeft->P() = msg.substring(4).toFloat();
       Serial.println("Setting kpL:");
-      Serial.println(kpL);
+      Serial.println(controlLeft->P());
 
     }
     else if (msg.startsWith("kil"))
     {
-      kiL = msg.substring(4).toFloat();
+      controlLeft->I() = msg.substring(4).toFloat();
       Serial.println("Setting kiL:");
-      Serial.println(kiL);
+      Serial.println(controlLeft->I());
 
     }
     else if (msg.startsWith("kdl"))
     {
-      kdL = msg.substring(4).toFloat();
+      controlLeft->D() = msg.substring(4).toFloat();
       Serial.println("Setting kdL:");
-      Serial.println(kdL);
+      Serial.println(controlLeft->D());
 
     }
     else if (msg.startsWith("kp"))
     {
-      kpR = msg.substring(4).toFloat();
-      kpL = kpR;
+      controlLeft->P() = msg.substring(3).toFloat();
+      controlRight->P() = controlLeft->P();
       Serial.println("Setting kp:");
-      Serial.println(kpR);
+      Serial.println(controlLeft->P());
 
     }
     else if (msg.startsWith("ki"))
     {
-      kiR = msg.substring(4).toFloat();
-      kiL = kiR;
+      controlLeft->I() = msg.substring(3).toFloat();
+      controlRight->I() = controlLeft->I();
       Serial.println("Setting ki:");
-      Serial.println(kiR);
+      Serial.println(controlLeft->I());
 
     }
     else if (msg.startsWith("kd"))
     {
-      kdR = msg.substring(4).toFloat();
-      kdL = kdR;
+      controlLeft->D() = msg.substring(3).toFloat();
+      controlRight->D() = controlLeft->D();
       Serial.println("Setting kd:");
-      Serial.println(kdR);
+      Serial.println(controlLeft->D());
 
-    } else if (msg.startsWith("p"))
+    }else if (msg.startsWith("kpo"))
     {
-      Serial.println(String(" kpR = " ) + String(kpR) + String(" kiR = ") + String(kiR) + String(" kdR = ") + String(kdR));
-      Serial.println(String(" kpL = " ) + String(kpL) + String(" kiL = ") + String(kiL) + String(" kdL = ") + String(kdL));
-    }
+      filterLeft->P() = msg.substring(3).toFloat();
+      filterRight->P() = filterLeft->P();
+      Serial.println("Setting kpObs:");
+      Serial.println(filterLeft->P());
+
+    } else if (msg.startsWith("kio"))
+    {
+      filterLeft->I() = msg.substring(3).toFloat();
+      filterRight->I() = filterLeft->I();
+      Serial.println("Setting kiObs:");
+      Serial.println(filterLeft->I());
+
+    }else if (msg.startsWith("p"))
+    {
+      printHelp();
+   }
     else {
       Serial.println("Unknown Command");
       setPointLeft = 0;
@@ -271,7 +280,7 @@ void plotStatus(const MotorVelocityControl* controller)
   //Serial.print(controller->dutySet());
 }
 
-void plotStatus()
+void writeSerial()
 {
 
   plotStatus(controlLeft);
