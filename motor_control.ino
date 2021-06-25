@@ -37,7 +37,7 @@ constexpr double T_LED_TOGGLE = 0.125;//[s]
 
 constexpr unsigned int T_MAIN_MS = static_cast<unsigned long>(T_MAIN * S_TO_MS); //[ms]
 constexpr unsigned int T_PID_STATE_MS = static_cast<unsigned long>(T_PID_STATE * S_TO_MS); //[MS]
-constexpr unsigned long COMMAND_TIMEOUT_MS = 10U * S_TO_MS; //[ms]
+constexpr unsigned long COMMAND_TIMEOUT_MS = 1U * S_TO_MS; //[ms]
 
 
 constexpr char* JOINT_NAMES[] = {"l", "r"};
@@ -83,16 +83,6 @@ void isr_controlLoop() {
     controlLeft->stop();
     controlRight->stop();
   }
-}
-
-void cb_set(const std_msgs::Float32MultiArray& msg) {
-  t_lastMsg = millis();
-  if(msg.data_length == 2)
-  {
-    cmd_vel[0] = msg.data[0];
-    cmd_vel[1] = msg.data[1];
-   }
-  
 }
 
 void readSerial();
@@ -195,19 +185,19 @@ void toggleLed()
 
 void printHelp()
 {
-  Serial.println("I Welcome to Arduino Motor Control");
+  Serial.println("I 0 Welcome to Arduino Motor Control");
 
-  Serial.println(String("Control Right: kpR = " ) + String(controlRight->P()) + String(" kiR = ") + String(controlRight->I()) + String(" kdR = ") + String(controlRight->D()));
-  Serial.println(String("Control Left: kpL = " ) + String(controlLeft->P()) + String(" kiL = ") + String(controlLeft->I()) + String(" kdL = ") + String(controlLeft->D()));
-  Serial.println(String("Filter: kpO = " ) + String(filterLeft->P()) + String(" kiO = ") + String(filterLeft->I()));
-  Serial.println("Usage:");
-  Serial.println("Configure: \"<param> <value>\" e.g with \"kp X\" or \"kpl X\"");
-  Serial.println("Set point: \"<param> <value>\" e.g with \"vl X\" or \"vr X\"");
+  Serial.println(String("I 0 Control Right: kpR = " ) + String(controlRight->P()) + String(" kiR = ") + String(controlRight->I()) + String(" kdR = ") + String(controlRight->D()));
+  Serial.println(String("I 0 Control Left: kpL = " ) + String(controlLeft->P()) + String(" kiL = ") + String(controlLeft->I()) + String(" kdL = ") + String(controlLeft->D()));
+  Serial.println(String("I 0 Filter: kpO = " ) + String(filterLeft->P()) + String(" kiO = ") + String(filterLeft->I()));
+  Serial.println("I 0 Usage:");
+  Serial.println("I 0 Configure: \"<param> <value>\" e.g with \"kp X\" or \"kpl X\"");
+  Serial.println("I 0 Set point: \"<param> <value>\" e.g with \"vl X\" or \"vr X\"");
 
-  Serial.println("Output Stream:ID pl vl* vl el dl pr vr* vr er dr");
+  Serial.println("I 0 Output Stream:ID pl vl* vl el dl pr vr* vr er dr");
 }
 
-const byte numChars = 32;
+const byte numChars = 64;
 char receivedChars[numChars];   // an array to store the received data
 bool newData = false;
 void recvWithEndMarker() {
@@ -233,6 +223,22 @@ void recvWithEndMarker() {
     }
 }
 
+int split(String s,String delimiter, String* fields)
+{
+  String remainer = s;
+  int n = 0;
+  int idx = remainer.indexOf(delimiter);
+  while (idx < remainer.length())
+  {
+    fields[n++] = remainer.substring(0,idx);
+    remainer = remainer.substring(idx+1);
+    idx = remainer.indexOf(delimiter);
+  }
+  fields[n++] = remainer;
+  return n;
+  
+  }
+
 void readSerial()
 {
   recvWithEndMarker();
@@ -242,117 +248,112 @@ void readSerial()
     String msg = String(receivedChars);
     newData = false;
     t_lastMsg = millis();
-    if (msg.startsWith("v"))
+    String fields[10];
+    int nFields = split(msg," ",fields);
+    
+    if (fields[0].startsWith("v"))
     {
-      int idxSep = msg.substring(2).indexOf(" ")+2;
-      cmd_vel[0] = msg.substring(2,idxSep).toFloat();
-      cmd_vel[1] = msg.substring(idxSep+1).toFloat();
+      if ( nFields == 4 )
+      {
+        cmd_vel[0] = fields[2].toFloat();
+        cmd_vel[1] = fields[3].toFloat();
+      }
+      
     }
-    else if (msg.startsWith("kpr"))
+    else if (fields[0].startsWith("kpr"))
     {
-      controlRight->P() = msg.substring(4).toFloat();
-      Serial.println("Setting kpR:");
-      Serial.println(controlRight->P() );
+      controlRight->P() = fields[4].toFloat();
+;
+      Serial.println("C 0 kpR " + String(controlRight->P()));
 
     }
-    else if (msg.startsWith("kir"))
+    else if (fields[0].startsWith("kir"))
     {
-      controlRight->I() = msg.substring(4).toFloat();
-      Serial.println("Setting kiR:");
-      Serial.println(controlRight->I());
+      controlRight->I() = fields[4].toFloat();
+
+      Serial.println("C 0 kiR " + String(controlRight->I()));
 
     }
-    else if (msg.startsWith("kdr"))
+    else if (fields[0].startsWith("kdr"))
     {
-      controlRight->D() = msg.substring(4).toFloat();
-      Serial.println("Setting kdR:");
-      Serial.println(controlRight->D());
-    }
-    else if (msg.startsWith("kpl"))
-    {
-      controlLeft->P() = msg.substring(4).toFloat();
-      Serial.println("Setting kpL:");
-      Serial.println(controlLeft->P());
+      controlRight->D() = fields[4].toFloat();
+     
+      Serial.println("C 0 kpR " + String(controlRight->D()));
 
     }
-    else if (msg.startsWith("kil"))
+    else if (fields[0].startsWith("kpl"))
     {
-      controlLeft->I() = msg.substring(4).toFloat();
-      Serial.println("Setting kiL:");
-      Serial.println(controlLeft->I());
+      controlLeft->P() = fields[4].toFloat();
+
+      Serial.println("C 0 kpL " + String(controlLeft->P()));
 
     }
-    else if (msg.startsWith("kdl"))
+    else if (fields[0].startsWith("kil"))
     {
-      controlLeft->D() = msg.substring(4).toFloat();
-      Serial.println("Setting kdL:");
-      Serial.println(controlLeft->D());
+      controlLeft->I() = fields[4].toFloat();
+
+      Serial.println("C 0 kiL " + String(controlLeft->I()));
 
     }
-    else if (msg.startsWith("kp"))
+    else if (fields[0].startsWith("kdl"))
     {
-      controlLeft->P() = msg.substring(3).toFloat();
+      controlLeft->D() = fields[4].toFloat();
+    
+      Serial.println("C 0 kpL " + String(controlLeft->D()));
+
+    }
+    else if (fields[0].startsWith("kp"))
+    {
+      controlLeft->P() = fields[4].toFloat();
       controlRight->P() = controlLeft->P();
-      Serial.println("Setting kp:");
-      Serial.println(controlLeft->P());
-
+      
+      Serial.println("C 0 kp " + String(controlLeft->P()));
     }
-    else if (msg.startsWith("ki"))
+    else if (fields[0].startsWith("ki"))
     {
-      controlLeft->I() = msg.substring(3).toFloat();
+      controlLeft->I() = fields[4].toFloat();
       controlRight->I() = controlLeft->I();
-      Serial.println("Setting ki:");
-      Serial.println(controlLeft->I());
-
+      
+      Serial.println("C 0 ki " + String(controlLeft->I()));
     }
-    else if (msg.startsWith("kd"))
+    else if (fields[0].startsWith("kd"))
     {
-      controlLeft->D() = msg.substring(3).toFloat();
+      controlLeft->D() = fields[4].toFloat();
       controlRight->D() = controlLeft->D();
-      Serial.println("Setting kd:");
-      Serial.println(controlLeft->D());
-
-    }else if (msg.startsWith("kpo"))
+      
+      Serial.println("C 0 kd " + String(controlLeft->D()));
+    }else if (fields[0].startsWith("kpo"))
     {
-      filterLeft->P() = msg.substring(3).toFloat();
+      filterLeft->P() = fields[4].toFloat();
       filterRight->P() = filterLeft->P();
-      Serial.println("Setting kpObs:");
-      Serial.println(filterLeft->P());
-
-    } else if (msg.startsWith("kio"))
+      
+      Serial.println("C 0 kpObs " + String(filterLeft->P()));
+    } else if (fields[0].startsWith("kio"))
     {
-      filterLeft->I() = msg.substring(3).toFloat();
+      filterLeft->I() = fields[4].toFloat();
       filterRight->I() = filterLeft->I();
-      Serial.println("Setting kiObs:");
-      Serial.println(filterLeft->I());
-
-    }else if (msg.startsWith("p"))
+      
+      Serial.println("C kiObs " + String(filterLeft->I()));
+    }else if (fields[0].startsWith("p"))
     {
       printHelp();
    }
     else {
-      Serial.println("I recieved:");
-      Serial.println(msg);
-
-      Serial.println("Unknown Command");
-      cmd_vel[0] = 0;
-      cmd_vel[1] = 0;
-      running = false;
-      
+      Serial.println("I 0 Unknown" + msg);   
     }
   }
 }
 
 void sendState(const MotorVelocityControl* controller)
 {
-  long int ticks = controller->wheelTicks();
-  Serial.print(String(ticks) + " " + String(controller->velocitySet()) + " " + String(controller->velocity()) + " " + String(controller->error()) + " " + String(controller->dutySet()) + " ");
+ 
+  Serial.print(String(controller->position()) + " " + String(controller->velocitySet()) + " " + String(controller->velocity()) + " " + String(controller->error()) + " " + String(controller->dutySet()) + " ");
 }
 
 void sendState()
 {
-
-  Serial.print("S ");
+  static long int seq = 0;
+  Serial.print("S " + String(seq++) + " ");
   sendState(controlLeft);
   sendState(controlRight);
   Serial.print("\r\n");
