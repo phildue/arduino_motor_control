@@ -15,7 +15,7 @@ using namespace robopi;
 /// Pin Layout
 constexpr int GPIO_IN_1 = 2, GPIO_IN_2 = 3, GPIO_EN_A = 9;
 constexpr int GPIO_IN_3 = 4, GPIO_IN_4 = 5, GPIO_EN_B = 10;
-constexpr int GPIO_ENC_RIGHT = 6, GPIO_ENC_LEFT = 7;
+constexpr int GPIO_ENC_RIGHT = 6, GPIO_ENC_LEFT = 20;//Set them far apart to avoid cross talk!
 constexpr int GPIO_LED = LED_BUILTIN;
 
 /// Control Parameters Init
@@ -112,8 +112,8 @@ void setup()
   controlLeft = new MotorVelocityControl(motorLeft, encoderLeft, filterLeft, kpL, kiL, kdL,ERR_I_MAX,V_MAX);
 
   /// Interrupts
-  attachInterrupt(digitalPinToInterrupt(GPIO_ENC_RIGHT), isr_tickRight, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(GPIO_ENC_LEFT), isr_tickLeft, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(GPIO_ENC_RIGHT), isr_tickRight, RISING);
+  attachInterrupt(digitalPinToInterrupt(GPIO_ENC_LEFT), isr_tickLeft, RISING);
 
 
   Timer1.initialize();

@@ -11,7 +11,7 @@ public:
                 pinMode(pin,OUTPUT);
                 break;
             case PI_INPUT:
-                pinMode(pin,INPUT);
+                pinMode(pin,INPUT_PULLUP);
                 break;
             default:
                 Serial.println("Wrong pin setup.");
