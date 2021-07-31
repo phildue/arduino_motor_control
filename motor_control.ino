@@ -13,10 +13,9 @@
 using namespace robopi;
 
 /// Pin Layout
-constexpr int GPIO_IN_1 = 2, GPIO_IN_2 = 3, GPIO_EN_A = 9;
-constexpr int GPIO_IN_3 = 4, GPIO_IN_4 = 5, GPIO_EN_B = 10;
-constexpr int GPIO_ENC_RIGHT = 6, GPIO_ENC_LEFT = 20;//Set them far apart to avoid cross talk!
-constexpr int GPIO_LED = LED_BUILTIN;
+constexpr int GPIO_IN_1 = 8, GPIO_IN_2 = 9, GPIO_EN_A = 10;
+constexpr int GPIO_IN_3 = 7, GPIO_IN_4 = 6, GPIO_EN_B = 5;
+constexpr int GPIO_ENC_RIGHT = 3, GPIO_ENC_LEFT = 4;
 
 /// Control Parameters Init
 constexpr double kpR = 0.02, kiR = 0.05, kdR = 0.00;
@@ -39,6 +38,8 @@ constexpr unsigned int T_MAIN_MS = static_cast<unsigned long>(T_MAIN * S_TO_MS);
 constexpr unsigned int T_PID_STATE_MS = static_cast<unsigned long>(T_PID_STATE * S_TO_MS); //[MS]
 constexpr unsigned long COMMAND_TIMEOUT_MS = 1U * S_TO_MS; //[ms]
 
+/// Dimensions
+constexpr double WHEEL_TICKS_PER_RAD = 20.0;
 
 constexpr char* JOINT_NAMES[] = {"l", "r"};
 constexpr char* FRAME_ID = "";
@@ -96,7 +97,7 @@ void setup()
   /// System
   system_api = new SystemArduino();
   motorRight = new MotorLn298(GPIO_IN_1, GPIO_IN_2, GPIO_EN_A, system_api);
-  encoderRight = new Encoder(GPIO_ENC_RIGHT, system_api);
+  encoderRight = new Encoder(WHEEL_TICKS_PER_RAD);
 
   //auto filterRight = std::make_shared<SlidingAverageFilter>(filterSize);
   filterRight = new LuenbergerObserver(kpObs, kiObs);
@@ -104,7 +105,7 @@ void setup()
   controlRight = new MotorVelocityControl(motorRight, encoderRight, filterRight, kpR, kiR, kdR,ERR_I_MAX,V_MAX);
 
   motorLeft = new MotorLn298(GPIO_IN_4, GPIO_IN_3, GPIO_EN_B, system_api);
-  encoderLeft = new Encoder(GPIO_ENC_LEFT, system_api);
+  encoderLeft = new Encoder(WHEEL_TICKS_PER_RAD);
 
   //auto filterLeft = std::make_shared<SlidingAverageFilter>(filterSize);
   filterLeft = new LuenbergerObserver(kpObs, kiObs);
