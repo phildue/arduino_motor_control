@@ -212,14 +212,14 @@ void toggleLed() {
 
 void printHelp() {
   String t = String(millis());
-  Serial.println("i " + t + " Welcome to Arduino Motor Control");
-  Serial.println("i " + t + " kpR = " + String(controlRight->P()) + String(" kiR = ") + String(controlRight->I()) + String(" kdR = ") + String(controlRight->D()));
-  Serial.println("i " + t + " kpL = " + String(controlLeft->P()) + String(" kiL = ") + String(controlLeft->I()) + String(" kdL = ") + String(controlLeft->D()));
-  Serial.println("i " + t + " kpO = " + String(filterLeft->P()) + String(" kiO = ") + String(filterLeft->I()));
-  Serial.println("i " + t + " Usage:");
-  Serial.println("i " + t + " Configure: \"c <param> <value>\" e.g with \"kp X\" or \"kpl X\"");
-  Serial.println("i " + t + " Query: \"q <param> \" e.g with \"q p\" or \"q s\"");
-  Serial.println("i " + t + " Set point: \"<param> <timestamp> <value left> <value right>\" e.g with \"v 0 10 10\" or \d 0 0.5 -0.5 \"");
+  Serial.println("info " + t + " Welcome to Arduino Motor Control");
+  Serial.println("info " + t + " kpR = " + String(controlRight->P()) + String(" kiR = ") + String(controlRight->I()) + String(" kdR = ") + String(controlRight->D()));
+  Serial.println("info " + t + " kpL = " + String(controlLeft->P()) + String(" kiL = ") + String(controlLeft->I()) + String(" kdL = ") + String(controlLeft->D()));
+  Serial.println("info " + t + " kpO = " + String(filterLeft->P()) + String(" kiO = ") + String(filterLeft->I()));
+  Serial.println("info " + t + " Usage:");
+  Serial.println("info " + t + " Configure: \"set cfg <param> <value>\" e.g with \"set cfg kp X\" or \"set cfg kpl X\"");
+  Serial.println("info " + t + " Query: \"query <param> \" e.g with \"q p\" or \"q s\"");
+  Serial.println("info " + t + " Set point: \"set <param> <timestamp> <value left> <value right>\" e.g with \"set vel 0 10 10\" or \set dty 0 0.5 -0.5 \"");
 }
 
 const byte numChars = 64;
@@ -270,72 +270,76 @@ void readSerial() {
     String fields[10];
     int nFields = split(msg, " ", fields);
 
-    if (fields[0].startsWith("v")) {
-      if (nFields == 4) {
-        cmd_vel[0] = fields[2].toFloat();
-        cmd_vel[1] = fields[3].toFloat();
+    if (fields[0].startsWith("set")) {
+      if (nFields == 5) {
+        if(fields[1].startsWith("vel"))
+        {
+          cmd_vel[0] = fields[3].toFloat();
+          cmd_vel[1] = fields[4].toFloat();
+        }else if(fields[1].startsWith("dty"))
+        {
+          cmd_duty[0] = fields[3].toFloat();
+          cmd_duty[1] = fields[4].toFloat();
+        }else if(fields[1].startsWith("rst"))
+        {
+          stop();
+          encoderLeft->reset();
+          encoderRight->reset();
+        }else{
+            Serial.println("info " + String(millis()) + " Available: vel, dty, rst");
+          }
+      }else if(nFields == 4){
+        if(fields[1].startsWith("cfg")){
+          if (fields[2].startsWith("kpr")) {
+            controlRight->P() = fields[3].toFloat();
+          } else if (fields[2].startsWith("kir")) {
+            controlRight->I() = fields[3].toFloat();
+          } else if (fields[2].startsWith("kdr")) {
+            controlRight->D() = fields[3].toFloat();
+          } else if (fields[2].startsWith("kpl")) {
+            controlLeft->P() = fields[3].toFloat();
+          } else if (fields[2].startsWith("kil")) {
+            controlLeft->I() = fields[3].toFloat();
+          } else if (fields[2].startsWith("kdl")) {
+            controlLeft->D() = fields[3].toFloat();
+          } else if (fields[2].startsWith("kp")) {
+            controlLeft->P() = fields[3].toFloat();
+            controlRight->P() = controlLeft->P();
+          } else if (fields[2].startsWith("ki")) {
+            controlLeft->I() = fields[3].toFloat();
+            controlRight->I() = controlLeft->I();
+          } else if (fields[2].startsWith("kd")) {
+            controlLeft->D() = fields[3].toFloat();
+            controlRight->D() = controlLeft->D();
+          } else if (fields[2].startsWith("kpo")) {
+            filterLeft->P() = fields[3].toFloat();
+            filterRight->P() = filterLeft->P();
+          } else if (fields[2].startsWith("kio")) {
+            filterLeft->I() = fields[3].toFloat();
+            filterRight->I() = filterLeft->I();
+          } else if (fields[2].startsWith("t")) {
+            COMMAND_TIMEOUT_MS = fields[3].toInt() * S_TO_MS;
+          }else{
+            Serial.println("info " + String(millis()) + " Available: kp=control p, ki=control i, kd=control d, kpo=filter p, kio=filter i, t=command timeout, kpr, kir, kdr, kpl, kil, kdl");
+
+          }
+        }else{
+            Serial.println("info " + String(millis()) + " set message not complete");
+          }
+        
       }
-    } else if (fields[0].startsWith("d")) {
-      if (nFields == 4) {
-        cmd_duty[0] = fields[2].toFloat();
-        cmd_duty[1] = fields[3].toFloat();
-      }
-
-    } else if (fields[0].startsWith("r")) {
-      stop();
-      encoderLeft->reset();
-      encoderRight->reset();
-    }
-
-    else if (fields[0].startsWith("c")) {
-      if (fields[1].startsWith("kpr")) {
-        controlRight->P() = fields[2].toFloat();
-      } else if (fields[1].startsWith("kir")) {
-        controlRight->I() = fields[2].toFloat();
-      } else if (fields[1].startsWith("kdr")) {
-        controlRight->D() = fields[2].toFloat();
-      } else if (fields[1].startsWith("kpl")) {
-        controlLeft->P() = fields[2].toFloat();
-      } else if (fields[1].startsWith("kil")) {
-        controlLeft->I() = fields[2].toFloat();
-      } else if (fields[1].startsWith("kdl")) {
-        controlLeft->D() = fields[2].toFloat();
-      } else if (fields[1].startsWith("kp")) {
-        controlLeft->P() = fields[2].toFloat();
-        controlRight->P() = controlLeft->P();
-      } else if (fields[1].startsWith("ki")) {
-        controlLeft->I() = fields[2].toFloat();
-        controlRight->I() = controlLeft->I();
-      } else if (fields[1].startsWith("kd")) {
-        controlLeft->D() = fields[2].toFloat();
-        controlRight->D() = controlLeft->D();
-      } else if (fields[1].startsWith("kpo")) {
-        filterLeft->P() = fields[2].toFloat();
-        filterRight->P() = filterLeft->P();
-      } else if (fields[1].startsWith("kio")) {
-        filterLeft->I() = fields[2].toFloat();
-        filterRight->I() = filterLeft->I();
-      } else if (fields[1].startsWith("t")) {
-        COMMAND_TIMEOUT_MS = fields[2].toInt() * S_TO_MS;
-      }else{
-        Serial.println("i " + String(millis()) + " Available: kp=control p, ki=control i, kd=control d, kpo=filter p, kio=filter i, t=command timeout, kpr, kir, kdr, kpl, kil, kdl");
-
-      }
-
-    } else if (fields[0].startsWith("q")) {
-      if (fields[1].startsWith("s")) {
+    } else if (fields[0].startsWith("query")) {
+      if (fields[1].startsWith("vap")) {
         sendState();
-      } else if (fields[1].startsWith("p")) {
+      } else if (fields[1].startsWith("pos")) {
         sendPosition();
-      } else if (fields[1].startsWith("c")) {
+      } else if (fields[1].startsWith("cfg")) {
         sendConfig();
       }else{
-        Serial.println("i " + String(millis()) + " Available: s=state, p=position, c=config");
+        Serial.println("info " + String(millis()) + " Available: s=state, p=position, c=config");
       }
-    } else if (fields[0].startsWith("h")) {
-      printHelp();
     } else {
-      Serial.println("i 0 Unknown" + msg);
+      Serial.println("inf 0 Unknown" + msg);
       stop();
       printHelp();
     }
@@ -349,7 +353,7 @@ void sendState(const MotorVelocityControl* controller) {
 
 
 void sendState() {
-  Serial.print("s s " + String(millis()) + " ");
+  Serial.print("state vap " + String(millis()) + " ");
   sendState(controlLeft);
   sendState(controlRight);
   Serial.print("\r\n");
@@ -360,7 +364,7 @@ void sendConfig(const MotorVelocityControl* controller, const LuenbergerObserver
   Serial.print(String(controller->P()) + " " + String(controller->I()) + " " + String(controller->D()) + " " + String(filter->P()) + " " + String(filter->I()) + " ");
 }
 void sendConfig() {
-  Serial.print("s c " + String(millis()) + " ");
+  Serial.print("state cfg " + String(millis()) + " ");
   sendConfig(controlLeft, filterLeft);
   sendConfig(controlRight, filterRight);
   Serial.print("\r\n");
@@ -370,7 +374,7 @@ void sendPosition(const MotorVelocityControl* controller, const Encoder* encoder
   Serial.print(String(controller->position()) + " " + String(encoder->ticks()) + " ");
 }
 void sendPosition() {
-  Serial.print("s p " + String(millis()) + " ");
+  Serial.print("state pos " + String(millis()) + " ");
   sendPosition(controlLeft, encoderLeft);
   sendPosition(controlRight, encoderRight);
   Serial.print("\r\n");
