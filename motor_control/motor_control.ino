@@ -15,8 +15,8 @@ using namespace robopi;
 /// Pin Layout
 constexpr int GPIO_IN_1 = 9, GPIO_IN_2 = 8, GPIO_EN_A = 11;
 constexpr int GPIO_IN_3 = 7, GPIO_IN_4 = 6, GPIO_EN_B = 5;
-constexpr int GPIO_ENC_RIGHT = 2, GPIO_ENC_LEFT = 3;
-constexpr int GPIO_ENC_RIGHT_B = 14, GPIO_ENC_LEFT_B = 3;
+constexpr int GPIO_ENC_RIGHT = 3, GPIO_ENC_LEFT = 2;
+constexpr int GPIO_ENC_RIGHT_B = 12, GPIO_ENC_LEFT_B = 10;
 
 /// Control Parameters Init
 constexpr double kpR = 0.02, kiR = 0.05, kdR = 0.00;
@@ -24,6 +24,7 @@ constexpr double kpL = 0.02, kiL = 0.05, kdL = 0.00;
 constexpr double kpObs = 3.0, kiObs = 7.5;
 constexpr double V_MAX = 15.0;
 constexpr double ERR_I_MAX = 10;
+constexpr int filterSize = 1;
 
 /// Timings
 constexpr double S_TO_MS = 1000.0;
@@ -57,8 +58,11 @@ Encoder* encoderLeft;
 Encoder* encoderRight;
 MotorLn298* motorLeft;
 MotorLn298* motorRight;
-LuenbergerObserver* filterLeft;
-LuenbergerObserver* filterRight;
+//LuenbergerObserver* filterLeft;
+//LuenbergerObserver* filterRight;
+SlidingAverageFilter* filterLeft;
+SlidingAverageFilter* filterRight;
+
 MotorVelocityControl* controlLeft;
 MotorVelocityControl* controlRight;
 
@@ -115,19 +119,19 @@ void setup() {
 
   /// System
   system_api = new SystemArduino();
-  motorRight = new MotorLn298(GPIO_IN_4, GPIO_IN_3, GPIO_EN_B, system_api);
+  motorRight = new MotorLn298(GPIO_IN_1, GPIO_IN_2, GPIO_EN_A, system_api);
   encoderRight = new Encoder(WHEEL_TICKS_PER_TURN);
 
-  //auto filterRight = std::make_shared<SlidingAverageFilter>(filterSize);
-  filterRight = new LuenbergerObserver(kpObs, kiObs);
+  filterRight = new SlidingAverageFilter(filterSize);
+  //filterRight = new LuenbergerObserver(kpObs, kiObs);
 
   controlRight = new MotorVelocityControl(motorRight, encoderRight, filterRight, kpR, kiR, kdR, ERR_I_MAX, V_MAX);
 
-  motorLeft = new MotorLn298(GPIO_IN_1, GPIO_IN_2, GPIO_EN_A, system_api);
+  motorLeft = new MotorLn298(GPIO_IN_3, GPIO_IN_4, GPIO_EN_B, system_api);
   encoderLeft = new Encoder(WHEEL_TICKS_PER_TURN);
 
-  //auto filterLeft = std::make_shared<SlidingAverageFilter>(filterSize);
-  filterLeft = new LuenbergerObserver(kpObs, kiObs);
+  filterLeft = new SlidingAverageFilter(filterSize);
+  //filterLeft = new LuenbergerObserver(kpObs, kiObs);
 
   controlLeft = new MotorVelocityControl(motorLeft, encoderLeft, filterLeft, kpL, kiL, kdL, ERR_I_MAX, V_MAX);
 
@@ -215,10 +219,10 @@ void printHelp() {
   Serial.println("info " + t + " Welcome to Arduino Motor Control");
   Serial.println("info " + t + " kpR = " + String(controlRight->P()) + String(" kiR = ") + String(controlRight->I()) + String(" kdR = ") + String(controlRight->D()));
   Serial.println("info " + t + " kpL = " + String(controlLeft->P()) + String(" kiL = ") + String(controlLeft->I()) + String(" kdL = ") + String(controlLeft->D()));
-  Serial.println("info " + t + " kpO = " + String(filterLeft->P()) + String(" kiO = ") + String(filterLeft->I()));
+  //Serial.println("info " + t + " kpO = " + String(filterLeft->P()) + String(" kiO = ") + String(filterLeft->I()));
   Serial.println("info " + t + " Usage:");
   Serial.println("info " + t + " Configure: \"set cfg <param> <value>\" e.g with \"set cfg kp X\" or \"set cfg kpl X\"");
-  Serial.println("info " + t + " Query: \"query <param> \" e.g with \"q p\" or \"q s\"");
+  Serial.println("info " + t + " Query: \"query <param> \" e.g with \"query p\" or \"query vap\"");
   Serial.println("info " + t + " Set point: \"set <param> <timestamp> <value left> <value right>\" e.g with \"set vel 0 10 10\" or \set dty 0 0.5 -0.5 \"");
 }
 
@@ -272,24 +276,21 @@ void readSerial() {
 
     if (fields[0].startsWith("set")) {
       if (nFields == 5) {
-        if(fields[1].startsWith("vel"))
-        {
+        if (fields[1].startsWith("vel")) {
           cmd_vel[0] = fields[3].toFloat();
           cmd_vel[1] = fields[4].toFloat();
-        }else if(fields[1].startsWith("dty"))
-        {
+        } else if (fields[1].startsWith("dty")) {
           cmd_duty[0] = fields[3].toFloat();
           cmd_duty[1] = fields[4].toFloat();
-        }else if(fields[1].startsWith("rst"))
-        {
+        } else if (fields[1].startsWith("rst")) {
           stop();
           encoderLeft->reset();
           encoderRight->reset();
-        }else{
-            Serial.println("info " + String(millis()) + " Available: vel, dty, rst");
-          }
-      }else if(nFields == 4){
-        if(fields[1].startsWith("cfg")){
+        } else {
+          Serial.println("info " + String(millis()) + " Available: vel, dty, rst");
+        }
+      } else if (nFields == 4) {
+        if (fields[1].startsWith("cfg")) {
           if (fields[2].startsWith("kpr")) {
             controlRight->P() = fields[3].toFloat();
           } else if (fields[2].startsWith("kir")) {
@@ -311,22 +312,20 @@ void readSerial() {
           } else if (fields[2].startsWith("kd")) {
             controlLeft->D() = fields[3].toFloat();
             controlRight->D() = controlLeft->D();
-          } else if (fields[2].startsWith("kpo")) {
+         /* } else if (fields[2].startsWith("kpo")) {
             filterLeft->P() = fields[3].toFloat();
             filterRight->P() = filterLeft->P();
           } else if (fields[2].startsWith("kio")) {
             filterLeft->I() = fields[3].toFloat();
-            filterRight->I() = filterLeft->I();
+            filterRight->I() = filterLeft->I();*/
           } else if (fields[2].startsWith("t")) {
             COMMAND_TIMEOUT_MS = fields[3].toInt() * S_TO_MS;
-          }else{
+          } else {
             Serial.println("info " + String(millis()) + " Available: kp=control p, ki=control i, kd=control d, kpo=filter p, kio=filter i, t=command timeout, kpr, kir, kdr, kpl, kil, kdl");
-
           }
-        }else{
-            Serial.println("info " + String(millis()) + " set message not complete");
-          }
-        
+        } else {
+          Serial.println("info " + String(millis()) + " set message not complete");
+        }
       }
     } else if (fields[0].startsWith("query")) {
       if (fields[1].startsWith("vap")) {
@@ -335,7 +334,7 @@ void readSerial() {
         sendPosition();
       } else if (fields[1].startsWith("cfg")) {
         sendConfig();
-      }else{
+      } else {
         Serial.println("info " + String(millis()) + " Available: s=state, p=position, c=config");
       }
     } else {
@@ -359,14 +358,14 @@ void sendState() {
   Serial.print("\r\n");
 }
 
-void sendConfig(const MotorVelocityControl* controller, const LuenbergerObserver* filter) {
+void sendConfig(const MotorVelocityControl* controller) {
 
-  Serial.print(String(controller->P()) + " " + String(controller->I()) + " " + String(controller->D()) + " " + String(filter->P()) + " " + String(filter->I()) + " ");
+  Serial.print(String(controller->P()) + " " + String(controller->I()) + " " + String(controller->D()) + " ");
 }
 void sendConfig() {
   Serial.print("state cfg " + String(millis()) + " ");
-  sendConfig(controlLeft, filterLeft);
-  sendConfig(controlRight, filterRight);
+  sendConfig(controlLeft);
+  sendConfig(controlRight);
   Serial.print("\r\n");
 }
 
