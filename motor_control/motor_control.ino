@@ -19,8 +19,8 @@ constexpr int GPIO_ENC_RIGHT = 3, GPIO_ENC_LEFT = 2;
 constexpr int GPIO_ENC_RIGHT_B = 12, GPIO_ENC_LEFT_B = 10;
 
 /// Control Parameters Init
-constexpr double kpR = 0.02, kiR = 0.05, kdR = 0.00;
-constexpr double kpL = 0.02, kiL = 0.05, kdL = 0.00;
+constexpr double kpR = 0.2, kiR = 0.05, kdR = 0.00;
+constexpr double kpL = 0.2, kiL = 0.05, kdL = 0.00;
 constexpr double kpObs = 3.0, kiObs = 7.5;
 constexpr double V_MAX = 15.0;
 constexpr double ERR_I_MAX = 10;
@@ -217,13 +217,12 @@ void toggleLed() {
 void printHelp() {
   String t = String(millis());
   Serial.println("info " + t + " Welcome to Arduino Motor Control");
-  Serial.println("info " + t + " kpR = " + String(controlRight->P()) + String(" kiR = ") + String(controlRight->I()) + String(" kdR = ") + String(controlRight->D()));
-  Serial.println("info " + t + " kpL = " + String(controlLeft->P()) + String(" kiL = ") + String(controlLeft->I()) + String(" kdL = ") + String(controlLeft->D()));
-  //Serial.println("info " + t + " kpO = " + String(filterLeft->P()) + String(" kiO = ") + String(filterLeft->I()));
   Serial.println("info " + t + " Usage:");
   Serial.println("info " + t + " Configure: \"set cfg <param> <value>\" e.g with \"set cfg kp X\" or \"set cfg kpl X\"");
   Serial.println("info " + t + " Query: \"query <param> \" e.g with \"query p\" or \"query vap\"");
   Serial.println("info " + t + " Set point: \"set <param> <timestamp> <value left> <value right>\" e.g with \"set vel 0 10 10\" or \set dty 0 0.5 -0.5 \"");
+  Serial.println("info " + t + " PL = " + String(controlRight->P()) + String(" IL = ") + String(controlRight->I()) + String(" DL = ") + String(controlRight->D()));
+  Serial.println("info " + t + " PR = " + String(controlLeft->P()) + String(" IR = ") + String(controlLeft->I()) + String(" DR = ") + String(controlLeft->D()));
 }
 
 const byte numChars = 64;
@@ -275,57 +274,63 @@ void readSerial() {
     int nFields = split(msg, " ", fields);
 
     if (fields[0].startsWith("set")) {
-      if (nFields == 5) {
-        if (fields[1].startsWith("vel")) {
-          cmd_vel[0] = fields[3].toFloat();
-          cmd_vel[1] = fields[4].toFloat();
-        } else if (fields[1].startsWith("dty")) {
-          cmd_duty[0] = fields[3].toFloat();
-          cmd_duty[1] = fields[4].toFloat();
-        } else if (fields[1].startsWith("rst")) {
-          stop();
-          encoderLeft->reset();
-          encoderRight->reset();
-        } else {
-          Serial.println("info " + String(millis()) + " Available: vel, dty, rst");
+      if (fields[1].startsWith("vel")) {
+        if (nFields != 5) {
+          Serial.println("info " + String(millis()) + " Message not complete. Expecting set vel <t> <vl> <vr>.");
+          return;
         }
-      } else if (nFields == 4) {
-        if (fields[1].startsWith("cfg")) {
-          if (fields[2].startsWith("kpr")) {
-            controlRight->P() = fields[3].toFloat();
-          } else if (fields[2].startsWith("kir")) {
-            controlRight->I() = fields[3].toFloat();
-          } else if (fields[2].startsWith("kdr")) {
-            controlRight->D() = fields[3].toFloat();
-          } else if (fields[2].startsWith("kpl")) {
-            controlLeft->P() = fields[3].toFloat();
-          } else if (fields[2].startsWith("kil")) {
-            controlLeft->I() = fields[3].toFloat();
-          } else if (fields[2].startsWith("kdl")) {
-            controlLeft->D() = fields[3].toFloat();
-          } else if (fields[2].startsWith("kp")) {
-            controlLeft->P() = fields[3].toFloat();
-            controlRight->P() = controlLeft->P();
-          } else if (fields[2].startsWith("ki")) {
-            controlLeft->I() = fields[3].toFloat();
-            controlRight->I() = controlLeft->I();
-          } else if (fields[2].startsWith("kd")) {
-            controlLeft->D() = fields[3].toFloat();
-            controlRight->D() = controlLeft->D();
-         /* } else if (fields[2].startsWith("kpo")) {
+        cmd_vel[0] = fields[3].toFloat();
+        cmd_vel[1] = fields[4].toFloat();
+      } else if (fields[1].startsWith("dty")) {
+        if (nFields != 5) {
+          Serial.println("info " + String(millis()) + " Message not complete. Expecting set dty <t> <dl> <dr>.");
+          return;
+        }
+        cmd_duty[0] = fields[3].toFloat();
+        cmd_duty[1] = fields[4].toFloat();
+      } else if (fields[1].startsWith("rst")) {
+        stop();
+        encoderLeft->reset();
+        encoderRight->reset();
+      } else if (fields[1].startsWith("cfg")) {
+        if (nFields != 4) {
+          Serial.println("info " + String(millis()) + " Message not complete. Expecting set cfg <name> <value>.");
+          return;
+        }
+        if (fields[2].startsWith("kpr")) {
+          controlRight->P() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kir")) {
+          controlRight->I() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kdr")) {
+          controlRight->D() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kpl")) {
+          controlLeft->P() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kil")) {
+          controlLeft->I() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kdl")) {
+          controlLeft->D() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kp")) {
+          controlLeft->P() = fields[3].toFloat();
+          controlRight->P() = controlLeft->P();
+        } else if (fields[2].startsWith("ki")) {
+          controlLeft->I() = fields[3].toFloat();
+          controlRight->I() = controlLeft->I();
+        } else if (fields[2].startsWith("kd")) {
+          controlLeft->D() = fields[3].toFloat();
+          controlRight->D() = controlLeft->D();
+          /* } else if (fields[2].startsWith("kpo")) {
             filterLeft->P() = fields[3].toFloat();
             filterRight->P() = filterLeft->P();
           } else if (fields[2].startsWith("kio")) {
             filterLeft->I() = fields[3].toFloat();
             filterRight->I() = filterLeft->I();*/
-          } else if (fields[2].startsWith("t")) {
-            COMMAND_TIMEOUT_MS = fields[3].toInt() * S_TO_MS;
-          } else {
-            Serial.println("info " + String(millis()) + " Available: kp=control p, ki=control i, kd=control d, kpo=filter p, kio=filter i, t=command timeout, kpr, kir, kdr, kpl, kil, kdl");
-          }
+        } else if (fields[2].startsWith("t")) {
+          COMMAND_TIMEOUT_MS = fields[3].toInt() * S_TO_MS;
         } else {
-          Serial.println("info " + String(millis()) + " set message not complete");
+          Serial.println("info " + String(millis()) + " verb: [" + fields[2] + "] Unknown. Available: kp=control p, ki=control i, kd=control d, kpo=filter p, kio=filter i, t=command timeout, kpr, kir, kdr, kpl, kil, kdl");
         }
+      } else {
+        Serial.println("info " + String(millis()) + " verb: [" + fields[1] + "] Unknown. Available: vel, dty, rst, cfg.");
       }
     } else if (fields[0].startsWith("query")) {
       if (fields[1].startsWith("vap")) {
@@ -335,10 +340,10 @@ void readSerial() {
       } else if (fields[1].startsWith("cfg")) {
         sendConfig();
       } else {
-        Serial.println("info " + String(millis()) + " Available: s=state, p=position, c=config");
+        Serial.println("info " + String(millis()) + " verb: [" + fields[1] + "] Unknown. Available: vap, pos, cfg.");
       }
     } else {
-      Serial.println("inf 0 Unknown" + msg);
+      Serial.println("info 0 Expecting: <set | query> <name> <..> Unknown: " + msg);
       stop();
       printHelp();
     }
