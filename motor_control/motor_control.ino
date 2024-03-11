@@ -337,10 +337,10 @@ void readSerial() {
         sendState();
       } else if (fields[1].startsWith("pos")) {
         sendPosition();
-      } else if (fields[1].startsWith("cfg")) {
+      } else if (fields[1].startsWith("pid")) {
         sendConfig();
       } else {
-        Serial.println("info " + String(millis()) + " verb: [" + fields[1] + "] Unknown. Available: vap, pos, cfg.");
+        Serial.println("info " + String(millis()) + " verb: [" + fields[1] + "] Unknown. Available: vap, pos, pid.");
       }
     } else {
       Serial.println("info 0 Expecting: <set | query> <name> <..> Unknown: " + msg);
@@ -368,7 +368,7 @@ void sendConfig(const MotorVelocityControl* controller) {
   Serial.print(String(controller->P()) + " " + String(controller->I()) + " " + String(controller->D()) + " ");
 }
 void sendConfig() {
-  Serial.print("state cfg " + String(millis()) + " ");
+  Serial.print("state pid " + String(millis()) + " ");
   sendConfig(controlLeft);
   sendConfig(controlRight);
   Serial.print("\r\n");
