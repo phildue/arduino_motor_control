@@ -19,8 +19,8 @@ constexpr int GPIO_ENC_RIGHT = 3, GPIO_ENC_LEFT = 2;
 constexpr int GPIO_ENC_RIGHT_B = 12, GPIO_ENC_LEFT_B = 10;
 
 /// Control Parameters Init
-constexpr double kpR = 0.2, kiR = 0.05, kdR = 0.00;
-constexpr double kpL = 0.2, kiL = 0.05, kdL = 0.00;
+constexpr double kpR = 0.2, kiR = 0.0, kdR = 0.00;
+constexpr double kpL = 0.2, kiL = 0.0, kdL = 0.00;
 constexpr double kpObs = 3.0, kiObs = 7.5;
 constexpr double V_MAX = 15.0;
 constexpr double ERR_I_MAX = 10;
