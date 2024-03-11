@@ -13,16 +13,18 @@
 using namespace robopi;
 
 /// Pin Layout
-constexpr int GPIO_IN_1 = 8, GPIO_IN_2 = 9, GPIO_EN_A = 10;
+constexpr int GPIO_IN_1 = 9, GPIO_IN_2 = 8, GPIO_EN_A = 11;
 constexpr int GPIO_IN_3 = 7, GPIO_IN_4 = 6, GPIO_EN_B = 5;
-constexpr int GPIO_ENC_RIGHT = 3, GPIO_ENC_LEFT = 4, GPIO_LED = 2;
+constexpr int GPIO_ENC_RIGHT = 3, GPIO_ENC_LEFT = 2;
+constexpr int GPIO_ENC_RIGHT_B = 12, GPIO_ENC_LEFT_B = 10;
 
 /// Control Parameters Init
-constexpr double kpR = 0.02, kiR = 0.05, kdR = 0.00;
-constexpr double kpL = 0.02, kiL = 0.05, kdL = 0.00;
+constexpr double kpR = 0.2, kiR = 0.0, kdR = 0.00;
+constexpr double kpL = 0.2, kiL = 0.0, kdL = 0.00;
 constexpr double kpObs = 3.0, kiObs = 7.5;
 constexpr double V_MAX = 15.0;
 constexpr double ERR_I_MAX = 10;
+constexpr int filterSize = 1;
 
 /// Timings
 constexpr double S_TO_MS = 1000.0;
@@ -37,11 +39,18 @@ constexpr double T_LED_TOGGLE = 0.125;           //[s]
 constexpr unsigned int T_MAIN_MS = static_cast<unsigned long>(T_MAIN * S_TO_MS);            //[ms]
 constexpr unsigned int T_PID_STATE_MS = static_cast<unsigned long>(T_PID_STATE * S_TO_MS);  //[MS]
 
+constexpr unsigned int T_CONTROL_MS = static_cast<unsigned long>(T_CONTROL * S_TO_MS);  //[ms]
 /// Dimensions
-constexpr double WHEEL_TICKS_PER_RAD = 20.0;
+constexpr double WHEEL_TICKS_PER_TURN = 480.0;
 
 constexpr char* JOINT_NAMES[] = { "l", "r" };
 constexpr char* FRAME_ID = "";
+
+/// State
+constexpr int STOP = 0;
+constexpr int VELOCITY_CONTROL = 1;
+constexpr int FEED_FORWARD = 2;
+
 
 /// Modules
 System* system_api;
@@ -49,34 +58,52 @@ Encoder* encoderLeft;
 Encoder* encoderRight;
 MotorLn298* motorLeft;
 MotorLn298* motorRight;
-LuenbergerObserver* filterLeft;
-LuenbergerObserver* filterRight;
+//LuenbergerObserver* filterLeft;
+//LuenbergerObserver* filterRight;
+SlidingAverageFilter* filterLeft;
+SlidingAverageFilter* filterRight;
+
 MotorVelocityControl* controlLeft;
 MotorVelocityControl* controlRight;
 
 
 /// Variables
-volatile bool running = false;
+volatile int state = STOP;
 unsigned long COMMAND_TIMEOUT_MS = 1U * S_TO_MS;  //[ms]
 unsigned int T_LED_TOGGLE_MS = static_cast<unsigned long>(T_LED_TOGGLE * S_TO_MS);
 unsigned long t_lastMsg = 0U;
 volatile float vel[] = { 0, 0 };
 volatile float pos[] = { 0, 0 };
 volatile float cmd_vel[] = { 0, 0 };
+volatile float cmd_duty[] = { 0, 0 };
 
-void isr_tickRight() {
-  encoderRight->tick();
+unsigned long t_main_next;
+
+void tickRight() {
+  if (digitalRead(GPIO_ENC_RIGHT_B) == LOW) {
+    encoderRight->tickForward();
+  } else {
+    encoderRight->tickBackward();
+  }
 }
-void isr_tickLeft() {
-  encoderLeft->tick();
+void tickLeft() {
+  if (digitalRead(GPIO_ENC_LEFT_B) == HIGH) {
+    encoderLeft->tickForward();
+  } else {
+    encoderLeft->tickBackward();
+  }
 }
 
-void isr_controlLoop() {
-  if (running) {
+void controlLoop() {
+  if (state == VELOCITY_CONTROL) {
     controlLeft->set(cmd_vel[0]);
     controlRight->set(cmd_vel[1]);
     controlRight->update(T_CONTROL);
     controlLeft->update(T_CONTROL);
+  } else if (state == FEED_FORWARD) {
+    motorLeft->set(cmd_duty[0]);
+    motorRight->set(cmd_duty[1]);
+
   } else {
     controlLeft->stop();
     controlRight->stop();
@@ -93,34 +120,33 @@ void setup() {
   /// System
   system_api = new SystemArduino();
   motorRight = new MotorLn298(GPIO_IN_1, GPIO_IN_2, GPIO_EN_A, system_api);
-  encoderRight = new Encoder(WHEEL_TICKS_PER_RAD);
+  encoderRight = new Encoder(WHEEL_TICKS_PER_TURN);
 
-  //auto filterRight = std::make_shared<SlidingAverageFilter>(filterSize);
-  filterRight = new LuenbergerObserver(kpObs, kiObs);
+  filterRight = new SlidingAverageFilter(filterSize);
+  //filterRight = new LuenbergerObserver(kpObs, kiObs);
 
   controlRight = new MotorVelocityControl(motorRight, encoderRight, filterRight, kpR, kiR, kdR, ERR_I_MAX, V_MAX);
 
-  motorLeft = new MotorLn298(GPIO_IN_4, GPIO_IN_3, GPIO_EN_B, system_api);
-  encoderLeft = new Encoder(WHEEL_TICKS_PER_RAD);
+  motorLeft = new MotorLn298(GPIO_IN_3, GPIO_IN_4, GPIO_EN_B, system_api);
+  encoderLeft = new Encoder(WHEEL_TICKS_PER_TURN);
 
-  //auto filterLeft = std::make_shared<SlidingAverageFilter>(filterSize);
-  filterLeft = new LuenbergerObserver(kpObs, kiObs);
+  filterLeft = new SlidingAverageFilter(filterSize);
+  //filterLeft = new LuenbergerObserver(kpObs, kiObs);
 
   controlLeft = new MotorVelocityControl(motorLeft, encoderLeft, filterLeft, kpL, kiL, kdL, ERR_I_MAX, V_MAX);
 
   /// Interrupts
-  attachInterrupt(digitalPinToInterrupt(GPIO_ENC_RIGHT), isr_tickRight, RISING);
-  attachInterrupt(digitalPinToInterrupt(GPIO_ENC_LEFT), isr_tickLeft, RISING);
+  attachInterrupt(digitalPinToInterrupt(GPIO_ENC_RIGHT), tickRight, RISING);
+  attachInterrupt(digitalPinToInterrupt(GPIO_ENC_LEFT), tickLeft, RISING);
 
 
-  Timer1.initialize();
-  Timer1.attachInterrupt(isr_controlLoop);
-  Timer1.setPeriod(T_CONTROL * S_TO_US);
+  t_main_next = millis();
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(GPIO_ENC_LEFT_B, INPUT);
+  pinMode(GPIO_ENC_RIGHT_B, INPUT);
 
-  pinMode(GPIO_LED, OUTPUT);
 
   Serial.begin(9600);
-  printHelp();
 }
 
 void updateState();
@@ -132,29 +158,47 @@ void sendPidState();
 void toggleLed();
 
 void loop() {
+  if (millis() > t_main_next) {
+    readSerial();
+    toggleLed();
+    updateState();
+    //sendState();
 
-  readSerial();
-
-  toggleLed();
-  updateState();
-  //sendState();
-
-  delay(T_MAIN_MS);
+    t_main_next += T_MAIN_MS;
+  }
+  controlLoop();
+  delay(T_CONTROL_MS);
 }
 
-
+void stop() {
+  state = STOP;
+  cmd_vel[0] = 0;
+  cmd_vel[1] = 0;
+  cmd_duty[0] = 0;
+  cmd_duty[1] = 0;
+}
 void updateState() {
 
-  if (cmd_vel[0] != 0 || cmd_vel[1] != 0) {
-    running = true;
+  if (cmd_duty[0] != 0 || cmd_duty[1] != 0) {
+    state = FEED_FORWARD;
+    cmd_vel[0] = 0;
+    cmd_vel[1] = 0;
+
     T_LED_TOGGLE_MS = 100;
   }
+
+  if (cmd_vel[0] != 0 || cmd_vel[1] != 0) {
+    state = VELOCITY_CONTROL;
+    T_LED_TOGGLE_MS = 100;
+    cmd_duty[0] = 0;
+    cmd_duty[1] = 0;
+  }
+
   if (millis() - t_lastMsg > COMMAND_TIMEOUT_MS) {
     t_lastMsg = millis();
     T_LED_TOGGLE_MS = 500;
-    running = false;
-    cmd_vel[0] = 0;
-    cmd_vel[1] = 0;
+    state = STOP;
+    stop();
   }
 }
 
@@ -165,22 +209,20 @@ void toggleLed() {
     t_lastToggle = millis();
 
     static int ledState = LOW;
-    digitalWrite(GPIO_LED, ledState);
+    digitalWrite(LED_BUILTIN, ledState);
     ledState = !ledState;
   }
 }
 
 void printHelp() {
-  Serial.println("I 0 Welcome to Arduino Motor Control");
-
-  Serial.println(String("I 0 Control Right: kpR = ") + String(controlRight->P()) + String(" kiR = ") + String(controlRight->I()) + String(" kdR = ") + String(controlRight->D()));
-  Serial.println(String("I 0 Control Left: kpL = ") + String(controlLeft->P()) + String(" kiL = ") + String(controlLeft->I()) + String(" kdL = ") + String(controlLeft->D()));
-  Serial.println(String("I 0 Filter: kpO = ") + String(filterLeft->P()) + String(" kiO = ") + String(filterLeft->I()));
-  Serial.println("I 0 Usage:");
-  Serial.println("I 0 Configure: \"<param> <value>\" e.g with \"kp X\" or \"kpl X\"");
-  Serial.println("I 0 Set point: \"<param> <timestamp> <value left> <value right>\" e.g with \"v 0 10 10\" ");
-
-  Serial.println("I 0 Output Stream:ID pl vl* vl el dl pr vr* vr er dr");
+  String t = String(millis());
+  Serial.println("info " + t + " Welcome to Arduino Motor Control");
+  Serial.println("info " + t + " Usage:");
+  Serial.println("info " + t + " Configure: \"set cfg <param> <value>\" e.g with \"set cfg kp X\" or \"set cfg kpl X\"");
+  Serial.println("info " + t + " Query: \"query <param> \" e.g with \"query p\" or \"query vap\"");
+  Serial.println("info " + t + " Set point: \"set <param> <timestamp> <value left> <value right>\" e.g with \"set vel 0 10 10\" or \set dty 0 0.5 -0.5 \"");
+  Serial.println("info " + t + " PL = " + String(controlRight->P()) + String(" IL = ") + String(controlRight->I()) + String(" DL = ") + String(controlRight->D()));
+  Serial.println("info " + t + " PR = " + String(controlLeft->P()) + String(" IR = ") + String(controlLeft->I()) + String(" DR = ") + String(controlLeft->D()));
 }
 
 const byte numChars = 64;
@@ -231,92 +273,113 @@ void readSerial() {
     String fields[10];
     int nFields = split(msg, " ", fields);
 
-    if (fields[0].startsWith("v")) {
-      if (nFields == 4) {
-        cmd_vel[0] = fields[2].toFloat();
-        cmd_vel[1] = fields[3].toFloat();
+    if (fields[0].startsWith("set")) {
+      if (fields[1].startsWith("vel")) {
+        if (nFields != 5) {
+          Serial.println("info " + String(millis()) + " Message not complete. Expecting set vel <t> <vl> <vr>.");
+          return;
+        }
+        cmd_vel[0] = fields[3].toFloat();
+        cmd_vel[1] = fields[4].toFloat();
+      } else if (fields[1].startsWith("dty")) {
+        if (nFields != 5) {
+          Serial.println("info " + String(millis()) + " Message not complete. Expecting set dty <t> <dl> <dr>.");
+          return;
+        }
+        cmd_duty[0] = fields[3].toFloat();
+        cmd_duty[1] = fields[4].toFloat();
+      } else if (fields[1].startsWith("rst")) {
+        stop();
+        encoderLeft->reset();
+        encoderRight->reset();
+      } else if (fields[1].startsWith("cfg")) {
+        if (nFields != 4) {
+          Serial.println("info " + String(millis()) + " Message not complete. Expecting set cfg <name> <value>.");
+          return;
+        }
+        if (fields[2].startsWith("kpr")) {
+          controlRight->P() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kir")) {
+          controlRight->I() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kdr")) {
+          controlRight->D() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kpl")) {
+          controlLeft->P() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kil")) {
+          controlLeft->I() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kdl")) {
+          controlLeft->D() = fields[3].toFloat();
+        } else if (fields[2].startsWith("kp")) {
+          controlLeft->P() = fields[3].toFloat();
+          controlRight->P() = controlLeft->P();
+        } else if (fields[2].startsWith("ki")) {
+          controlLeft->I() = fields[3].toFloat();
+          controlRight->I() = controlLeft->I();
+        } else if (fields[2].startsWith("kd")) {
+          controlLeft->D() = fields[3].toFloat();
+          controlRight->D() = controlLeft->D();
+          /* } else if (fields[2].startsWith("kpo")) {
+            filterLeft->P() = fields[3].toFloat();
+            filterRight->P() = filterLeft->P();
+          } else if (fields[2].startsWith("kio")) {
+            filterLeft->I() = fields[3].toFloat();
+            filterRight->I() = filterLeft->I();*/
+        } else if (fields[2].startsWith("t")) {
+          COMMAND_TIMEOUT_MS = fields[3].toInt() * S_TO_MS;
+        } else {
+          Serial.println("info " + String(millis()) + " verb: [" + fields[2] + "] Unknown. Available: kp=control p, ki=control i, kd=control d, kpo=filter p, kio=filter i, t=command timeout, kpr, kir, kdr, kpl, kil, kdl");
+        }
+      } else {
+        Serial.println("info " + String(millis()) + " verb: [" + fields[1] + "] Unknown. Available: vel, dty, rst, cfg.");
       }
-
-    } else if (fields[0].startsWith("kpr")) {
-      controlRight->P() = fields[4].toFloat();
-
-      Serial.println("C 0 kpR " + String(controlRight->P()));
-
-    } else if (fields[0].startsWith("kir")) {
-      controlRight->I() = fields[4].toFloat();
-
-      Serial.println("C 0 kiR " + String(controlRight->I()));
-
-    } else if (fields[0].startsWith("kdr")) {
-      controlRight->D() = fields[4].toFloat();
-
-      Serial.println("C 0 kpR " + String(controlRight->D()));
-
-    } else if (fields[0].startsWith("kpl")) {
-      controlLeft->P() = fields[4].toFloat();
-
-      Serial.println("C 0 kpL " + String(controlLeft->P()));
-
-    } else if (fields[0].startsWith("kil")) {
-      controlLeft->I() = fields[4].toFloat();
-
-      Serial.println("C 0 kiL " + String(controlLeft->I()));
-
-    } else if (fields[0].startsWith("kdl")) {
-      controlLeft->D() = fields[4].toFloat();
-
-      Serial.println("C 0 kpL " + String(controlLeft->D()));
-
-    } else if (fields[0].startsWith("kp")) {
-      controlLeft->P() = fields[4].toFloat();
-      controlRight->P() = controlLeft->P();
-
-      Serial.println("C 0 kp " + String(controlLeft->P()));
-    } else if (fields[0].startsWith("ki")) {
-      controlLeft->I() = fields[4].toFloat();
-      controlRight->I() = controlLeft->I();
-
-      Serial.println("C 0 ki " + String(controlLeft->I()));
-    } else if (fields[0].startsWith("kd")) {
-      controlLeft->D() = fields[4].toFloat();
-      controlRight->D() = controlLeft->D();
-
-      Serial.println("C 0 kd " + String(controlLeft->D()));
-    } else if (fields[0].startsWith("kpo")) {
-      filterLeft->P() = fields[4].toFloat();
-      filterRight->P() = filterLeft->P();
-
-      Serial.println("C 0 kpObs " + String(filterLeft->P()));
-    } else if (fields[0].startsWith("kio")) {
-      filterLeft->I() = fields[4].toFloat();
-      filterRight->I() = filterLeft->I();
-
-      Serial.println("C kiObs " + String(filterLeft->I()));
-    } else if (fields[0].startsWith("Q")) {
-      if (fields[2].startsWith("s")) {
+    } else if (fields[0].startsWith("query")) {
+      if (fields[1].startsWith("vap")) {
         sendState();
+      } else if (fields[1].startsWith("pos")) {
+        sendPosition();
+      } else if (fields[1].startsWith("cfg")) {
+        sendConfig();
+      } else {
+        Serial.println("info " + String(millis()) + " verb: [" + fields[1] + "] Unknown. Available: vap, pos, cfg.");
       }
-
-    } else if (fields[0].startsWith("t")) {
-      COMMAND_TIMEOUT_MS = fields[4].toInt() * S_TO_MS;
-      Serial.println("C CMD Timeout " + String(COMMAND_TIMEOUT_MS));
-    } else if (fields[0].startsWith("p")) {
-      printHelp();
     } else {
-      Serial.println("I 0 Unknown" + msg);
+      Serial.println("info 0 Expecting: <set | query> <name> <..> Unknown: " + msg);
+      stop();
+      printHelp();
     }
   }
 }
 
 void sendState(const MotorVelocityControl* controller) {
 
-  Serial.print(String(controller->position()) + " " + String(controller->velocitySet()) + " " + String(controller->velocity()) + " " + String(controller->error()) + " " + String(controller->dutySet()) + " ");
+  Serial.print(String(controller->position()) + " " + String(controller->velocity()) + " ");
 }
 
+
 void sendState() {
-  static long int seq = 0;
-  Serial.print("S " + String(seq++) + " ");
+  Serial.print("state vap " + String(millis()) + " ");
   sendState(controlLeft);
   sendState(controlRight);
+  Serial.print("\r\n");
+}
+
+void sendConfig(const MotorVelocityControl* controller) {
+
+  Serial.print(String(controller->P()) + " " + String(controller->I()) + " " + String(controller->D()) + " ");
+}
+void sendConfig() {
+  Serial.print("state cfg " + String(millis()) + " ");
+  sendConfig(controlLeft);
+  sendConfig(controlRight);
+  Serial.print("\r\n");
+}
+
+void sendPosition(const MotorVelocityControl* controller, const Encoder* encoder) {
+  Serial.print(String(controller->position()) + " " + String(encoder->ticks()) + " ");
+}
+void sendPosition() {
+  Serial.print("state pos " + String(millis()) + " ");
+  sendPosition(controlLeft, encoderLeft);
+  sendPosition(controlRight, encoderRight);
   Serial.print("\r\n");
 }
